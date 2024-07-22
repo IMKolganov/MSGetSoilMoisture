@@ -17,7 +17,7 @@ def get_soil_moisture():
         # Генерация случайных данных для режима разработки
         random_data = {
             'webservice_data': {
-                'soil_moisture': round(random.uniform(-20.0, 40.0), 2),
+                'soil_moisture': random.randint(0, 100),
             }
         }
         return jsonify(random_data), 200
