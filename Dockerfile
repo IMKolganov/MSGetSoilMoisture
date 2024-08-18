@@ -1,21 +1,27 @@
-# Используйте официальный образ Python
+# Use the official Python image
 FROM python:3.9-slim
 
-# Установите рабочую директорию
+# Set the working directory
 WORKDIR /app
 
-# Копируйте зависимости и установите их
+# Install curl and download wait-for-it.sh
+RUN apt-get update && apt-get install -y curl \
+    && curl -o /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh \
+    && chmod +x /usr/local/bin/wait-for-it.sh
+
+# Copy dependencies and install them
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
-# Копируйте все файлы в рабочую директорию
+# Copy all files to the working directory
 COPY . .
 
-# Установите переменную окружения для Flask
-ENV FLASK_APP=index.py
+# Set environment variables
+ENV FLASK_APP=run.py
+ENV FLASK_ENV=docker
 
-# Открываем порт 5001 для Flask
+# Expose port 5001 for Flask
 EXPOSE 5001
 
-# Определите команду для запуска приложения
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5001"]
+# Define the command to run the application
+CMD ["wait-for-it.sh", "rabbitmq:5672", "--", "python", "run.py"]
