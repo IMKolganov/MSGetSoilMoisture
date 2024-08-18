@@ -25,7 +25,7 @@ def handle_signal(signum, frame):
     sys.exit(0)
 
 def start_message_processing(app):
-    """Запускает обработку сообщений в отдельном потоке с контекстом приложения."""
+    """Starts message processing in a separate thread with application context."""
     import app.routes.requests as requests
     processing_thread = threading.Thread(target=requests.start_processing, args=(app,))
     processing_thread.daemon = True
