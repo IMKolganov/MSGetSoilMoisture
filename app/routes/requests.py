@@ -37,7 +37,7 @@ def process_message(ch, method, properties, body):
         soilMoistureLevel = round(random.uniform(0, 100), 2)
 
         response_message = {
-            'soilMoistureLevel': soilMoistureLevel,
+            'SoilMoistureLevel': soilMoistureLevel,
         }
         response_json = json.dumps(response_message)
 
