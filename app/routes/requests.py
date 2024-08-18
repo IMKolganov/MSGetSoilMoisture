@@ -33,11 +33,11 @@ def process_message(ch, method, properties, body):
 
     print(f"Received message: {request_data} with CorrelationId: {correlation_id}")
 
-    if method_name == 'get-soil-moinsture':
-        soilMoinstureLevel = round(random.uniform(0, 100), 2)
+    if method_name == 'get-soil-moisture':
+        soilMoistureLevel = round(random.uniform(0, 100), 2)
 
         response_message = {
-            'soilMoinstureLevel': soilMoinstureLevel,
+            'soilMoistureLevel': soilMoistureLevel,
         }
         response_json = json.dumps(response_message)
 
