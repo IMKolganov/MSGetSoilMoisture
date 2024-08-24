@@ -1,22 +1,30 @@
-# app/config.py
-
 import os
 
 class Config:
     RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
-    REQUEST_QUEUE_NAME = os.getenv('REQUEST_QUEUE_NAME', 'soilMoistureRequestQueue')
-    RESPONSE_QUEUE_NAME = os.getenv('RESPONSE_QUEUE_NAME', 'soilMoistureResponseQueue')
+
+    BACKEND_TO_MSGETSOILMOISTURE_REQUEST_QUEUE = os.getenv('BACKEND_TO_MSGETSOILMOISTURE_REQUEST_QUEUE', 'backend.to.msgetsoilmoisture.request')
+    MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE = os.getenv('MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE', 'msgetsoilmoisture.to.backend.response')
+
+    MSGETSOILMOISTURE_TO_MSMICROCONTROLLERMANAGER_REQUEST_QUEUE = os.getenv('MSGETSOILMOISTURE_TO_MSMICROCONTROLLERMANAGER_REQUEST_QUEUE', 'msgetsoilmoisture.to.msmicrocontrollermanager.request')
+    MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE = os.getenv('MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE', 'msmicrocontrollermanager.to.msgetsoilmoisture.response')
+
+    QUEUES = [
+        BACKEND_TO_MSGETSOILMOISTURE_REQUEST_QUEUE,
+        MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE,
+        MSGETSOILMOISTURE_TO_MSMICROCONTROLLERMANAGER_REQUEST_QUEUE,
+        MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE
+    ]
+    
     MICROCONTROLLER_MANAGER_URL = os.getenv('MICROCONTROLLER_MANAGER_URL', 'http://localhost:4000')
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
     RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
-    REQUEST_QUEUE_NAME = os.getenv('REQUEST_QUEUE_NAME', 'soilMoistureRequestQueue')
-    RESPONSE_QUEUE_NAME = os.getenv('RESPONSE_QUEUE_NAME', 'soilMoistureResponseQueue')
     MICROCONTROLLER_MANAGER_URL = os.getenv('MICROCONTROLLER_MANAGER_URL', 'http://localhost:4000')
+
 
 class DockerConfig(Config):
     RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'rabbitmq')
-    REQUEST_QUEUE_NAME = os.getenv('REQUEST_QUEUE_NAME', 'soilMoistureRequestQueue')
-    RESPONSE_QUEUE_NAME = os.getenv('RESPONSE_QUEUE_NAME', 'soilMoistureResponseQueue')
     MICROCONTROLLER_MANAGER_URL = os.getenv('MICROCONTROLLER_MANAGER_URL', 'http://microcontroller_manager:4000')

@@ -4,6 +4,9 @@ from flask import Flask
 from app.routes import bp as routes_bp
 import threading
 import os
+import sys
+from app.clients.rabbit_mq_client import RabbitMQClient
+from app.services.soil_moisture_service import SoilMoistureService
 
 def create_app():
     app = Flask(__name__)
@@ -26,10 +29,11 @@ def handle_signal(signum, frame):
 
 def start_message_processing(app):
     """Starts message processing in a separate thread with application context."""
-    import app.routes.requests as requests
-    processing_thread = threading.Thread(target=requests.start_processing, args=(app,))
+    import app.services.soil_moisture_service as soil_moisture_service
+    rabbitmq_client = RabbitMQClient(host=app.config['RABBITMQ_HOST'], queues=app.config['QUEUES'])
+    soil_moisture_service = SoilMoistureService(rabbitmq_client=rabbitmq_client)
+    
+    processing_thread = threading.Thread(target=soil_moisture_service.start_listening, args=(app,))
     processing_thread.daemon = True
     processing_thread.start()
     print("Message processing thread started")
-
-app = create_app()
