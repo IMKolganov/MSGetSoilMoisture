@@ -23,7 +23,7 @@ def create_app():
     return app
 
 def handle_signal(signum, frame):
-    print('Received signal:', signum)
+    print('MSGetSoilMoisture: Received signal:', signum)
     # Perform cleanup if needed
     sys.exit(0)
 
@@ -36,4 +36,4 @@ def start_message_processing(app):
     processing_thread = threading.Thread(target=soil_moisture_service.start_listening, args=(app,))
     processing_thread.daemon = True
     processing_thread.start()
-    print("Message processing thread started")
+    print("MSGetSoilMoisture: Message processing thread started")
