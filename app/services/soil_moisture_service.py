@@ -14,85 +14,30 @@ class SoilMoistureService:
         self.rabbitmq_client = rabbitmq_client
 
     def handle_request(self, ch, method, properties, body, app):
-        request_data = json.loads(body)
-        method_name = request_data.get('MethodName')
-        correlation_id = properties.correlation_id
+        try:
+            request_data = json.loads(body)
+            method_name = request_data.get('MethodName')
+            correlation_id = properties.correlation_id
+            request_id = request_data.get('GUID', str(uuid.uuid4()))
+            sensor_id = request_data.get('SensorId', 0)
 
-        if method_name == 'get-soil-moisture':
-            # If the request comes with the WithoutMSMicrocontrollerManager flag
-            if request_data.get('WithoutMSMicrocontrollerManager'):
-                soil_moisture_value = round(random.uniform(0, 100), 2)
+            if method_name == 'get-soil-moisture':
+                # if request_data.get('WithoutMSMicrocontrollerManager'):
+                #     # If the request comes with the WithoutMSMicrocontrollerManager flag
+                #     self.send_request_without_ms_microcontroller_manager(app, ch, request_id, method_name, sensor_id, correlation_id, method)
+                #     return
+                
+                self.send_request_to_ms_microcontroller_manager(app, request_id, method_name, sensor_id, correlation_id)
+                soil_moisture_response = self.recive_answer_from_ms_microcontroller_manager(app, correlation_id, ch, method)
+                self.send_result_to_backend(app, ch, soil_moisture_response, correlation_id, method)
 
-                # Create response in the required format
-                response_message = {
-                    'RequestId': request_data.get('GUID', str(uuid.uuid4())),
-                    'MethodName': method_name,
-                    'SensorId': request_data.get('SensorId', 1),
-                    'SoilMoistureLevel': soil_moisture_value,
-                    'CreateDate': datetime.utcnow().isoformat()
-                }
-
-                ch.basic_publish(
-                    exchange='',
-                    routing_key=app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE'],
-                    body=json.dumps(response_message),
-                    properties=pika.BasicProperties(
-                        correlation_id=correlation_id
-                    )
-                )
-
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-                print(f"Handled 'get-soil-moisture' request without MSMicrocontrollerManager. Response sent to {app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
-                return
-
-            message = SoilMoistureRequestMessage(
-                request_id=request_data.get('GUID'),
-                method_name='get-soil-moisture',
-                sensor_id=0,
-                create_date=datetime.utcnow().isoformat(),
-                additional_info={"request_origin": "MSGetSoilMoisture"}
-            )
-            # Send request to MSMicrocontrollerManager
-            self.rabbitmq_client.send_message(
-                queue_name=app.config['MSGETSOILMOISTURE_TO_MSMICROCONTROLLERMANAGER_REQUEST_QUEUE'],
-                message=message,
-                correlation_id=correlation_id,
-                reply_to=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE']
-            )
-            print(f"Request sent to MSMicrocontrollerManager. Waiting for response...")
-
-            # Wait for a response from MSMicrocontrollerManager with a 5-second timeout
-            try:
-                soil_moisture_response = self.rabbitmq_client.receive_message(
-                    queue_name=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE'],
-                    correlation_id=correlation_id,
-                    timeout=5  # Timeout in seconds
-                )
-
-                if soil_moisture_response:
-                    ch.basic_publish(
-                        exchange='',
-                        routing_key=app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE'],
-                        body=json.dumps(soil_moisture_response),
-                        properties=pika.BasicProperties(
-                            correlation_id=correlation_id
-                        )
-                    )
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
-                    print(f"Received response from MSMicrocontrollerManager. Response sent to {app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
-                else:
-                    # Timeout expired, message not processed
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-                    print(f"Timeout expired. No response from MSMicrocontrollerManager. Message not processed.")
-
-            except Exception as e:
-                print(f"Error while receiving message: {e}")
+            else:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-                print(f"Message handling failed due to error: {e}")
-
-        else:
+                print(f"Unhandled method '{method_name}'. Message nack'ed.")
+        except Exception as e:
+            print(f"Error while receiving message: {e}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            print(f"Unhandled method '{method_name}'. Message nack'ed.")
+            print(f"Message handling failed due to error: {e}")
 
     def start_listening(self, app):
         time.sleep(3)  # Delay for service readiness
@@ -102,3 +47,107 @@ class SoilMoistureService:
             on_message_callback=lambda ch, method, properties, body: self.handle_request(ch, method, properties, body, app)
         )
         print("SoilMoistureService: Listening for messages...")
+    
+    
+    
+    
+    def send_request_to_ms_microcontroller_manager(self, app, request_id, method_name, sensor_id, correlation_id):
+        message = SoilMoistureRequestMessage(
+            request_id=request_id,
+            method_name=method_name,
+            sensor_id=sensor_id,
+            create_date=datetime.utcnow().isoformat(),
+            additional_info={"request_origin": "MSGetSoilMoisture"}
+        )
+        # Send request to MSMicrocontrollerManager
+        self.rabbitmq_client.send_message(
+            queue_name=app.config['MSGETSOILMOISTURE_TO_MSMICROCONTROLLERMANAGER_REQUEST_QUEUE'],
+            message=message,
+            correlation_id=correlation_id,
+            reply_to=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE']
+        )
+        print(f"Request sent to MSMicrocontrollerManager.")
+
+    def recive_answer_from_ms_microcontroller_manager(self, app, correlation_id, ch, method):
+        print("Waiting for response...")
+        try:
+            soil_moisture_response = self.rabbitmq_client.receive_message(
+                queue_name=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE'],
+                correlation_id=correlation_id,
+                timeout=5  # Timeout in seconds
+            )
+
+            if soil_moisture_response:
+                return soil_moisture_response
+        
+            else:
+                # Timeout expired, message not processed
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                print(f"Timeout expired. No response from MSMicrocontrollerManager. Message not processed.")
+
+        except Exception as e:
+            print(f"Fatal error: {e}")
+
+    def send_result_to_backend(self, app, ch, soil_moisture_response, correlation_id, method):
+        response_message = self.prepare_response(soil_moisture_response)
+
+        ch.basic_publish(
+            exchange='',
+            routing_key=app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE'],
+            body=json.dumps(response_message),
+            properties=pika.BasicProperties(
+                correlation_id=correlation_id
+            )
+        )
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"Received response from MSMicrocontrollerManager. Response sent to "
+                +f"{app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
+        
+    def send_request_without_ms_microcontroller_manager(self, app, ch, request_id, 
+                                                        method_name, sensor_id, correlation_id, method):
+        soil_moisture_value = round(random.uniform(0, 100), 2)
+
+        response_message = self.prepare_response(request_id, method_name, sensor_id, soil_moisture_value)
+        
+        ch.basic_publish(
+            exchange='',
+            routing_key=app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE'],
+            body=json.dumps(response_message),
+            properties=pika.BasicProperties(
+                correlation_id=correlation_id
+            )
+        )
+
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"Handled 'get-soil-moisture' request without MSMicrocontrollerManager. "
+                + f"Response sent to {app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
+        return
+
+    def prepare_response(self, soil_moisture_response):
+        if (soil_moisture_response.get('SoilMoistureLevel') >= 0):
+                error_message = f"The sensor is not connected. SensorId: {soil_moisture_response.get('SensorId')} "
+        moisture_percent = self.calculate_soil_moisture_percent(1024, 3024, soil_moisture_response.get('SoilMoistureLevel'))
+        return {
+            'RequestId': soil_moisture_response.get('RequestId'),
+            'MethodName': soil_moisture_response.get('MethodName'),
+            'SensorId': soil_moisture_response.get('SensorId'),
+            'SoilMoistureLevelPercent': moisture_percent,
+            'CreateDate': datetime.utcnow().isoformat(),
+            'ErrorMessage': error_message,
+        }
+    
+
+    def calculate_soil_moisture_percent(self, min_value, max_value, sensor_value):
+        # Ensure that sensor_value is within the bounds of min and max
+        if sensor_value < min_value:
+            sensor_value = min_value
+        elif sensor_value > max_value:
+            sensor_value = max_value
+        
+        # Calculate the moisture percentage
+        moisture_percent = ((sensor_value - min_value) / (max_value - min_value)) * 100
+        
+        # Invert the percentage since soil moisture typically decreases as sensor readings increase
+        moisture_percent = 100 - moisture_percent
+        
+        return moisture_percent
