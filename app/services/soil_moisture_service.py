@@ -16,16 +16,18 @@ class SoilMoistureService:
     def handle_request(self, ch, method, properties, body, app):
         try:
             request_data = json.loads(body)
+            print("SoilMoistureService: Recive message")
+            print(f"SoilMoistureService: {request_data}")
             method_name = request_data.get('MethodName')
             correlation_id = properties.correlation_id
-            request_id = request_data.get('GUID', str(uuid.uuid4()))
+            request_id = request_data.get('RequestId')
             sensor_id = request_data.get('SensorId', 0)
 
             if method_name == 'get-soil-moisture':
-                # if request_data.get('WithoutMSMicrocontrollerManager'):
-                #     # If the request comes with the WithoutMSMicrocontrollerManager flag
-                #     self.send_request_without_ms_microcontroller_manager(app, ch, request_id, method_name, sensor_id, correlation_id, method)
-                #     return
+                if request_data.get('WithoutMSMicrocontrollerManager'):
+                    # If the request comes with the WithoutMSMicrocontrollerManager flag
+                    self.send_request_without_ms_microcontroller_manager(app, ch, request_id, method_name, sensor_id, correlation_id, method)
+                    return
                 
                 self.send_request_to_ms_microcontroller_manager(app, request_id, method_name, sensor_id, correlation_id)
                 soil_moisture_response = self.recive_answer_from_ms_microcontroller_manager(app, correlation_id, ch, method)
@@ -33,11 +35,11 @@ class SoilMoistureService:
 
             else:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-                print(f"Unhandled method '{method_name}'. Message nack'ed.")
+                print(f"SoilMoistureService: Unhandled method '{method_name}'. Message nack'ed.")
         except Exception as e:
-            print(f"Error while receiving message: {e}")
+            print(f"SoilMoistureService: Error while receiving message: {e}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            print(f"Message handling failed due to error: {e}")
+            print(f"SoilMoistureService: Message handling failed due to error: {e}")
 
     def start_listening(self, app):
         time.sleep(3)  # Delay for service readiness
@@ -66,10 +68,10 @@ class SoilMoistureService:
             correlation_id=correlation_id,
             reply_to=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE']
         )
-        print(f"Request sent to MSMicrocontrollerManager.")
+        print(f"SoilMoistureService: Request sent to MSMicrocontrollerManager.")
 
     def recive_answer_from_ms_microcontroller_manager(self, app, correlation_id, ch, method):
-        print("Waiting for response...")
+        print("SoilMoistureService: Waiting for response...")
         try:
             soil_moisture_response = self.rabbitmq_client.receive_message(
                 queue_name=app.config['MSMICROCONTROLLERMANAGER_TO_MSGETSOILMOISTURE_RESPONSE_QUEUE'],
@@ -100,14 +102,22 @@ class SoilMoistureService:
             )
         )
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"Received response from MSMicrocontrollerManager. Response sent to "
+        print(f"SoilMoistureService: Received response from MSMicrocontrollerManager. Response sent to "
                 +f"{app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
+        print(json.dumps(response_message))
         
     def send_request_without_ms_microcontroller_manager(self, app, ch, request_id, 
                                                         method_name, sensor_id, correlation_id, method):
-        soil_moisture_value = round(random.uniform(0, 100), 2)
+        soil_moisture_value = round(random.uniform(1024, 3024), 2)
+        soil_moisture_response = {
+            'RequestId': request_id,
+            'MethodName': method_name,
+            'SensorId': sensor_id,
+            'SoilMoistureLevel': soil_moisture_value,
+            'CreateDate': datetime.utcnow().isoformat(),
+        }
 
-        response_message = self.prepare_response(request_id, method_name, sensor_id, soil_moisture_value)
+        response_message = self.prepare_response(soil_moisture_response)
         
         ch.basic_publish(
             exchange='',
@@ -119,12 +129,14 @@ class SoilMoistureService:
         )
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"Handled 'get-soil-moisture' request without MSMicrocontrollerManager. "
+        print(f"SoilMoistureService: Handled 'get-soil-moisture' request without MSMicrocontrollerManager. "
                 + f"Response sent to {app.config['MSGETSOILMOISTURE_TO_BACKEND_RESPONSE_QUEUE']}")
+        print(f"SoilMoistureService: {json.dumps(response_message)}")
         return
 
     def prepare_response(self, soil_moisture_response):
-        if (soil_moisture_response.get('SoilMoistureLevel') >= 0):
+        error_message = ""
+        if (soil_moisture_response.get('SoilMoistureLevel') <= 0):
                 error_message = f"The sensor is not connected. SensorId: {soil_moisture_response.get('SensorId')} "
         moisture_percent = self.calculate_soil_moisture_percent(1024, 3024, soil_moisture_response.get('SoilMoistureLevel'))
         return {
